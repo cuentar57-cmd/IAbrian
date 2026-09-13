@@ -1,5 +1,5 @@
-import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=2";
-import {searchWikipedia, searchTerm, webMessages, cleanSources, sourceUrl} from "./web-search.js";
+import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=3";
+import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=3";
 const $ = id => document.getElementById(id);
 let savedChats = [];
 try { savedChats = readChats(localStorage); } catch { /* Storage may be disabled. */ }
@@ -51,12 +51,14 @@ function appendMessage(message){
 function appendSources(el,sources){
   const safe=cleanSources(sources);if(!safe.length)return;
   const section=document.createElement("details");section.className="sources";
-  const summary=document.createElement("summary");summary.textContent="Fuentes consultadas · Wikipedia";section.append(summary);
+  const summary=document.createElement("summary");summary.textContent="Fuentes consultadas · Web";section.append(summary);
   safe.forEach((source,i)=>{
     const link=document.createElement("a");link.href=sourceUrl(source);link.target="_blank";link.rel="noopener noreferrer";link.textContent="["+(i+1)+"] "+source.title;
     const p=document.createElement("p");p.textContent=source.extract+"…";section.append(link,p);
   });
+  if(safe.some(s=>s.pageid)){
   const credit=document.createElement("a");credit.href="https://creativecommons.org/licenses/by-sa/4.0/";credit.target="_blank";credit.rel="noopener noreferrer";credit.textContent="Extractos de Wikipedia · CC BY-SA 4.0 · Autores e historial en cada artículo";section.append(credit);
+  }
   el.append(section);
 }
 $("web-mode").onchange=()=>{ $("web-options").hidden=!$("web-mode").checked; };
@@ -141,21 +143,21 @@ $("composer").onsubmit=async event=>{
   if(chat.messages.at(-1)?.role==="user")chat.messages.pop();
   chat.messages.push({role:"user",content:text});$("prompt").value="";
   const useWeb=$("web-mode").checked;
-  const query=$("web-query").value.trim()||searchTerm(text);
+  const query=$("web-query").value.trim()||text;
   stopped=false;busy=true;render();persist();status("IAbrian está pensando…");
   const reply={role:"assistant",content:""};
   const body=appendMessage(reply);
   try {
     let requestMessages;
     if(useWeb){
-      status("Consultando Wikipedia…");
+      status("Buscando en la web…");
       searchController=new AbortController();
       const timer=setTimeout(()=>searchController?.abort(),15000);
-      try { reply.sources=await searchWikipedia(query,{signal:searchController.signal}); }
+      try { reply.sources=await searchWeb(query,{signal:searchController.signal}); }
       catch(error){if(error.name==="AbortError")throw new Error(stopped?"Consulta cancelada.":"La consulta tardó demasiado. Revisá tu conexión.");throw error;}
       finally{clearTimeout(timer);searchController=null;}
       if(stopped)throw new Error("Consulta cancelada.");
-      if(!reply.sources.length)throw new Error("No encontré artículos con extractos. Escribí un tema concreto en el campo de Wikipedia y reintentá.");
+      if(!reply.sources.length)throw new Error("No encontré páginas con extractos. Probá con una búsqueda más concreta.");
       appendSources(body.parentElement,reply.sources);
       requestMessages=webMessages(text,reply.sources);
       status("Leyendo las fuentes y preparando la respuesta…");
@@ -175,7 +177,7 @@ $("composer").onsubmit=async event=>{
       body.textContent=reply.content;if(pinned)scroll();
     }
     if(!reply.content.trim())throw new Error("No se generó una respuesta. Probá enviar la pregunta de nuevo.");
-    status(stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de Wikipedia. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
+    status(stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de la web. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
   }catch(error){
     status("No se pudo completar la respuesta. "+(error.message||"Probá recargar la página."));
     if(!reply.content.trim()){$("prompt").value=text;body.parentElement.remove();}

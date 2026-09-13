@@ -24,11 +24,11 @@ El costo de inferencia por API es cero. El alojamiento y la distribución de arc
 - Historial local (hasta 30 chats y 100 mensajes por chat), borrar historial, copiar y detener.
 - Contenido como texto, sin interpretar HTML del usuario o del modelo.
 - Contexto reciente limitado por bytes, con ventana 4096 y respuesta máxima 512 tokens.
-- Sin cuentas, base de datos, sincronización, búsqueda general de la web ni subida de archivos.
+- Sin cuentas, base de datos, sincronización, subida de archivos.
 
 ## Requisitos y privacidad
 Necesita WebGPU, controladores y memoria suficientes. Detectar WebGPU no garantiza que el modelo pueda ejecutarse en todos los equipos. La descarga es de cientos de MB y el modelo requiere memoria adicional. Su calidad es limitada, especialmente frente a modelos grandes.
-Los mensajes se procesan localmente y se guardan en localStorage. Si se activa la consulta opcional a Wikipedia, se envía el tema indicado o la pregunta actual a su API pública; nunca el historial. Los proveedores de archivos externos reciben información de conexión. No hay analítica ni API remota de conversación.
+Los mensajes se procesan localmente y se guardan en localStorage. Si se activa la búsqueda web opcional, se envía el tema indicado o la pregunta actual a Tavily; nunca el historial. Los proveedores de archivos externos reciben información de conexión. No hay analítica ni API remota de conversación.
 Borrar historial no borra la caché del modelo: usar la configuración de datos del sitio del navegador. No se garantiza funcionamiento sin conexión; el motor y la página aún dependen de recursos externos.
 En dispositivos compartidos, otros usuarios del mismo perfil de navegador pueden leer el historial.
 
@@ -46,9 +46,14 @@ Prueba manual real pendiente en GPU compatible: carga completa, pregunta en espa
 - Conversión MLC: https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC
 No se incluyen ni se vuelven a licenciar los pesos del modelo en este repositorio.
 
-## Consulta opcional a internet (Wikipedia)
-Activar **Consultar internet · Wikipedia**, escribir una pregunta y, opcionalmente, un tema corto (por ejemplo, energía solar). Antes de responder se consultan hasta dos artículos de Wikipedia en español y sus introducciones en texto plano. La IA recibe extractos limitados y la pregunta actual; no se mezcla el historial con las fuentes. Los enlaces y extractos se muestran en una sección separada y se conservan en el historial.
-Si no hay resultados o falla la conexión, se informa el error sin simular una búsqueda exitosa. Se puede cancelar durante la consulta.
-No es un buscador de toda la web. No garantiza actualidad ni permite verificar noticias, clima o cotizaciones en vivo. Sin claves ni servicios de pago; sujeto a disponibilidad y límites de Wikimedia.
-Los extractos conservan atribución mediante enlace a los artículos e historial de autores y licencia CC BY-SA 4.0.
-Documentación: https://www.mediawiki.org/wiki/API:Cross-site_requests y https://www.mediawiki.org/wiki/API:Search
+## Búsqueda web general
+Activar **Buscar en la web**. El tema específico, si se indica, o la pregunta actual se envía a Tavily Search. No se envía el historial. Usa el modo oficial gratuito keyless, sin cuenta, clave, tarjeta ni facturación de API. Las respuestas se generan localmente con los extractos recuperados.
+
+Se solicitan cuatro resultados de búsqueda general (sin restricción de dominios) y se usan hasta dos con URL válida y extracto, limitados por el contexto del modelo pequeño. Los enlaces y fragmentos se muestran debajo de la respuesta y persisten en el historial. No se accede a todas las páginas existentes, contenido privado ni necesariamente artículos completos. Una búsqueda exitosa no garantiza que la respuesta del modelo sea correcta o actual.
+
+El proveedor aplica límites gratuitos no cuantificados aquí. Se muestran errores explícitos ante cuotas, rechazos, red y ausencia de resultados; nunca se activa una opción de pago ni se cambia silenciosamente a Wikipedia. Cancelación y timeout siguen disponibles.
+Los chats antiguos con fuentes de Wikipedia conservan enlaces y atribución.
+
+Verificado: petición OPTIONS con el origen https://cuentar57-cmd.github.io y encabezados de CORS, búsqueda HTTP real sin clave y pruebas automatizadas. La prueba completa de navegador + GPU local sigue pendiente.
+- Acceso keyless y límites: https://docs.tavily.com/documentation/keyless
+- API: https://docs.tavily.com/documentation/api-reference/endpoint/search

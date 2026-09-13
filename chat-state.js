@@ -1,4 +1,4 @@
-import {cleanSources} from "./web-search.js";
+import {cleanSources} from "./web-search.js?v=3";
 export const STORAGE_KEY = "iabrian.chats.v1";
 export function readChats(storage) {
   try {
