@@ -1,5 +1,6 @@
-import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=3";
-import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=3";
+import {todayContext, prepareQuestion, validateSchedule} from "./answer-context.js";
+import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=4";
+import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=4";
 const $ = id => document.getElementById(id);
 let savedChats = [];
 try { savedChats = readChats(localStorage); } catch { /* Storage may be disabled. */ }
@@ -139,11 +140,17 @@ $("composer").onsubmit=async event=>{
     current=crypto.randomUUID();chats.unshift({id:current,title:text.slice(0,60),messages:[]});chats=chats.slice(0,30);
   }
   const chat=activeChat();
+  const requestContext=prepareQuestion(text,chat.messages,todayContext());
+  if(requestContext.schedule&&!$("web-mode").checked){
+    status("Para confirmar un próximo partido necesitás activar Buscar en la web. Sin una consulta actual no puedo confirmar la fecha.");
+    $("web-mode").focus();return;
+  }
   // Drop an unanswered user turn after an interrupted or failed request.
   if(chat.messages.at(-1)?.role==="user")chat.messages.pop();
   chat.messages.push({role:"user",content:text});$("prompt").value="";
   const useWeb=$("web-mode").checked;
-  const query=$("web-query").value.trim()||text;
+  const query=$("web-query").value.trim() ? $("web-query").value.trim()+" "+(requestContext.schedule?"próximo partido desde "+requestContext.clock.date:"") : requestContext.query;
+  $("web-query").value="";
   stopped=false;busy=true;render();persist();status("IAbrian está pensando…");
   const reply={role:"assistant",content:""};
   const body=appendMessage(reply);
@@ -159,29 +166,33 @@ $("composer").onsubmit=async event=>{
       if(stopped)throw new Error("Consulta cancelada.");
       if(!reply.sources.length)throw new Error("No encontré páginas con extractos. Probá con una búsqueda más concreta.");
       appendSources(body.parentElement,reply.sources);
-      requestMessages=webMessages(text,reply.sources);
+      requestMessages=webMessages(text,reply.sources,requestContext);
       status("Leyendo las fuentes y preparando la respuesta…");
     }else{
-      requestMessages=[{role:"system",content:"Sos IAbrian. Respondé en español, de forma clara y breve. Admití cuando no sabés algo. En este mensaje no se consultó internet. No inventes fuentes."},...contextMessages(chat.messages)];
+      requestMessages=[{role:"system",content:"Fecha actual: "+requestContext.clock.date+". Zona horaria: "+requestContext.clock.timeZone+". Sos IAbrian. Respondé en español, de forma clara y breve. Admití cuando no sabés algo. En este mensaje no se consultó internet. No inventes fuentes."},...contextMessages(chat.messages)];
     }
     if(stopped)throw new Error("Consulta cancelada.");
     generating=true;
     const stream=await engine.chat.completions.create({
       messages:requestMessages,
-      stream:true,max_tokens:512,temperature:0.6
+      stream:true,max_tokens:512,temperature:useWeb?0.1:0.6
     });
     let pinned=true;
     for await(const chunk of stream){
       pinned=$("scroll-area").scrollHeight-$("scroll-area").scrollTop-$("scroll-area").clientHeight<130;
       reply.content+=chunk.choices[0]?.delta?.content||"";
-      body.textContent=reply.content;if(pinned)scroll();
+      if(!requestContext.schedule)body.textContent=reply.content;
+      else body.textContent="Verificando la fecha con las fuentes…";
+      if(pinned)scroll();
     }
     if(!reply.content.trim())throw new Error("No se generó una respuesta. Probá enviar la pregunta de nuevo.");
+    if(requestContext.schedule){reply.content=validateSchedule(reply.content,reply.sources||[],requestContext.clock);body.textContent=reply.content;}
     status(stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de la web. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
   }catch(error){
     status("No se pudo completar la respuesta. "+(error.message||"Probá recargar la página."));
     if(!reply.content.trim()){$("prompt").value=text;body.parentElement.remove();}
   }finally{
+    if(requestContext.schedule&&reply.content.trim()){reply.content=validateSchedule(reply.content,reply.sources||[],requestContext.clock);body.textContent=reply.content;}
     if(reply.content.trim())chat.messages.push(reply);
     chat.messages=chat.messages.slice(-100);
     generating=false;busy=false;controls();persist();$("prompt").focus();

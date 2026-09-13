@@ -57,3 +57,8 @@ Los chats antiguos con fuentes de Wikipedia conservan enlaces y atribución.
 Verificado: petición OPTIONS con el origen https://cuentar57-cmd.github.io y encabezados de CORS, búsqueda HTTP real sin clave y pruebas automatizadas. La prueba completa de navegador + GPU local sigue pendiente.
 - Acceso keyless y límites: https://docs.tavily.com/documentation/keyless
 - API: https://docs.tavily.com/documentation/api-reference/endpoint/search
+
+## Fechas y repreguntas
+Cada consulta recibe la fecha y zona horaria del dispositivo (depende de que su reloj sea correcto). Las repreguntas breves pueden incluir la pregunta anterior del usuario en la búsqueda y en el contexto local; no se usan respuestas previas del modelo como evidencia. El aviso de privacidad refleja este cambio.
+Las preguntas detectadas sobre próximos partidos requieren activar búsqueda web. No se responde con fechas desde la memoria del modelo. Se consulta el calendario desde la fecha local. La respuesta deportiva se retiene hasta validar que las fechas reconocidas sean futuras y estén presentes en los extractos. Si faltan fechas verificables, hay fechas pasadas o el partido es del mismo día sin estado confirmado, se muestra una respuesta de incertidumbre con los enlaces.
+Esta comprobación conservadora no verifica semánticamente rival, competición o estado real del evento; no sustituye una API oficial de fixtures. No es entrenamiento del modelo y no garantiza que toda respuesta sea correcta.
