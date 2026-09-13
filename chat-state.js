@@ -1,3 +1,4 @@
+import {cleanSources} from "./web-search.js";
 export const STORAGE_KEY = "iabrian.chats.v1";
 export function readChats(storage) {
   try {
@@ -6,7 +7,7 @@ export function readChats(storage) {
     return data.filter(c => typeof c?.id === "string" && typeof c.title === "string" && Array.isArray(c.messages))
       .slice(0, 30).map(c => ({id:c.id, title:c.title.slice(0,80), messages:c.messages
         .filter(m => ["user","assistant"].includes(m?.role) && typeof m.content === "string" && m.content.trim())
-        .slice(-100).map(m => ({role:m.role,content:m.content.slice(0,16000)}))}));
+        .slice(-100).map(m => ({role:m.role,content:m.content.slice(0,16000),...(m.sources ? {sources:cleanSources(m.sources)} : {})}))}));
   } catch { return []; }
 }
 export function contextMessages(messages, maxBytes = 2800) {

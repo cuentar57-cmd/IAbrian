@@ -1,9 +1,11 @@
-import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js";
+import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=2";
+import {searchWikipedia, searchTerm, webMessages, cleanSources, sourceUrl} from "./web-search.js";
 const $ = id => document.getElementById(id);
 let savedChats = [];
 try { savedChats = readChats(localStorage); } catch { /* Storage may be disabled. */ }
 let chats = savedChats, current = chats[0]?.id || null;
 let engine, worker, busy = false, loading = false, cancelLoad;
+let searchController, stopped=false, generating=false;
 function activeChat(){ return chats.find(c=>c.id===current); }
 function status(message){ $("status").textContent = message; }
 function persist(){
@@ -11,6 +13,8 @@ function persist(){
   catch { status("No se pudo guardar el historial. Esta conversación seguirá disponible mientras mantengas abierta la página."); }
 }
 function controls(){
+  $("web-mode").disabled=busy;
+  $("web-query").disabled=busy;
   $("send").disabled = !engine || busy || loading;
   $("stop").hidden = !busy;
   $("new-chat").disabled = busy;
@@ -41,8 +45,21 @@ function appendMessage(message){
     copy.onclick=async()=>{try{await navigator.clipboard.writeText(body.textContent); status("Respuesta copiada.");}catch{status("No se pudo copiar. Podés seleccionar el texto manualmente.");}};
     el.append(copy);
   }
+  appendSources(el,message.sources);
   $("messages").append(el); return body;
 }
+function appendSources(el,sources){
+  const safe=cleanSources(sources);if(!safe.length)return;
+  const section=document.createElement("details");section.className="sources";
+  const summary=document.createElement("summary");summary.textContent="Fuentes consultadas · Wikipedia";section.append(summary);
+  safe.forEach((source,i)=>{
+    const link=document.createElement("a");link.href=sourceUrl(source);link.target="_blank";link.rel="noopener noreferrer";link.textContent="["+(i+1)+"] "+source.title;
+    const p=document.createElement("p");p.textContent=source.extract+"…";section.append(link,p);
+  });
+  const credit=document.createElement("a");credit.href="https://creativecommons.org/licenses/by-sa/4.0/";credit.target="_blank";credit.rel="noopener noreferrer";credit.textContent="Extractos de Wikipedia · CC BY-SA 4.0 · Autores e historial en cada artículo";section.append(credit);
+  el.append(section);
+}
+$("web-mode").onchange=()=>{ $("web-options").hidden=!$("web-mode").checked; };
 function scroll(){ $("scroll-area").scrollTop=$("scroll-area").scrollHeight; }
 function render(){
   const messages=activeChat()?.messages||[];
@@ -106,7 +123,7 @@ $("activate").onclick=async()=>{
     clearTimeout(timer);cancelLoad=null;loading=false;$("progress").hidden=true;controls();
   }
 };
-$("stop").onclick=()=>{if(engine&&busy){engine.interruptGenerate();status("Deteniendo respuesta…");}};
+$("stop").onclick=()=>{if(busy){stopped=true;searchController?.abort();if(generating)engine.interruptGenerate();status("Deteniendo…");}};
 $("prompt").addEventListener("keydown",event=>{
   if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();$("composer").requestSubmit();}
 });
@@ -123,12 +140,32 @@ $("composer").onsubmit=async event=>{
   // Drop an unanswered user turn after an interrupted or failed request.
   if(chat.messages.at(-1)?.role==="user")chat.messages.pop();
   chat.messages.push({role:"user",content:text});$("prompt").value="";
-  busy=true;render();persist();status("IAbrian está pensando…");
+  const useWeb=$("web-mode").checked;
+  const query=$("web-query").value.trim()||searchTerm(text);
+  stopped=false;busy=true;render();persist();status("IAbrian está pensando…");
   const reply={role:"assistant",content:""};
   const body=appendMessage(reply);
   try {
+    let requestMessages;
+    if(useWeb){
+      status("Consultando Wikipedia…");
+      searchController=new AbortController();
+      const timer=setTimeout(()=>searchController?.abort(),15000);
+      try { reply.sources=await searchWikipedia(query,{signal:searchController.signal}); }
+      catch(error){if(error.name==="AbortError")throw new Error(stopped?"Consulta cancelada.":"La consulta tardó demasiado. Revisá tu conexión.");throw error;}
+      finally{clearTimeout(timer);searchController=null;}
+      if(stopped)throw new Error("Consulta cancelada.");
+      if(!reply.sources.length)throw new Error("No encontré artículos con extractos. Escribí un tema concreto en el campo de Wikipedia y reintentá.");
+      appendSources(body.parentElement,reply.sources);
+      requestMessages=webMessages(text,reply.sources);
+      status("Leyendo las fuentes y preparando la respuesta…");
+    }else{
+      requestMessages=[{role:"system",content:"Sos IAbrian. Respondé en español, de forma clara y breve. Admití cuando no sabés algo. En este mensaje no se consultó internet. No inventes fuentes."},...contextMessages(chat.messages)];
+    }
+    if(stopped)throw new Error("Consulta cancelada.");
+    generating=true;
     const stream=await engine.chat.completions.create({
-      messages:[{role:"system",content:"Sos IAbrian, un asistente útil. Respondé en español, de forma clara y breve. Admití cuando no sabés algo. No tenés acceso a internet, noticias en vivo ni herramientas. No inventes fuentes."},...contextMessages(chat.messages)],
+      messages:requestMessages,
       stream:true,max_tokens:512,temperature:0.6
     });
     let pinned=true;
@@ -138,14 +175,14 @@ $("composer").onsubmit=async event=>{
       body.textContent=reply.content;if(pinned)scroll();
     }
     if(!reply.content.trim())throw new Error("No se generó una respuesta. Probá enviar la pregunta de nuevo.");
-    status("Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
+    status(stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de Wikipedia. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
   }catch(error){
     status("No se pudo completar la respuesta. "+(error.message||"Probá recargar la página."));
     if(!reply.content.trim()){$("prompt").value=text;body.parentElement.remove();}
   }finally{
     if(reply.content.trim())chat.messages.push(reply);
     chat.messages=chat.messages.slice(-100);
-    busy=false;controls();persist();$("prompt").focus();
+    generating=false;busy=false;controls();persist();$("prompt").focus();
   }
 };
 render();
