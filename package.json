@@ -1,0 +1,1 @@
+{"name":"iabrian","private":true,"version":"1.0.0","type":"module","scripts":{"test":"node --test tests/*.test.js","check":"node --check app.js && node --check worker.js && node --check chat-state.js","start":"python3 -m http.server 8080"}}
