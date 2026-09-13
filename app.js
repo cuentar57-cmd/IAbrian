@@ -1,4 +1,4 @@
-import {todayContext, prepareQuestion, validateSchedule} from "./answer-context.js";
+import {todayContext, prepareQuestion, validateSchedule, calendarAnswer} from "./answer-context.js?v=5";
 import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=4";
 import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=4";
 const $ = id => document.getElementById(id);
@@ -166,6 +166,10 @@ $("composer").onsubmit=async event=>{
       if(stopped)throw new Error("Consulta cancelada.");
       if(!reply.sources.length)throw new Error("No encontré páginas con extractos. Probá con una búsqueda más concreta.");
       appendSources(body.parentElement,reply.sources);
+      if(requestContext.schedule){
+        const calendar=calendarAnswer(text,reply.sources,requestContext);
+        if(calendar){reply.content=calendar;body.textContent=calendar;status("Fecha y rival coincidentes en dos fuentes. Revisá los enlaces por posibles cambios.");return;}
+      }
       requestMessages=webMessages(text,reply.sources,requestContext);
       status("Leyendo las fuentes y preparando la respuesta…");
     }else{
@@ -187,7 +191,7 @@ $("composer").onsubmit=async event=>{
     }
     if(!reply.content.trim())throw new Error("No se generó una respuesta. Probá enviar la pregunta de nuevo.");
     if(requestContext.schedule){reply.content=validateSchedule(reply.content,reply.sources||[],requestContext.clock);body.textContent=reply.content;}
-    status(stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de la web. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
+    status(requestContext.schedule&&reply.content.startsWith("No puedo confirmar")?"No se pudo confirmar el próximo partido. Abrí las fuentes para revisar los datos.":stopped?"Respuesta detenida.":useWeb?"Respuesta basada en extractos de la web. Abrí las fuentes para verificarla.":"Respuesta terminada. Se usa solamente la parte reciente del chat como contexto.");
   }catch(error){
     status("No se pudo completar la respuesta. "+(error.message||"Probá recargar la página."));
     if(!reply.content.trim()){$("prompt").value=text;body.parentElement.remove();}
