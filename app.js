@@ -1,5 +1,5 @@
 import {renderMessage} from "./render-message.js?v=6";
-import {todayContext, prepareQuestion, validateSchedule, calendarAnswer} from "./answer-context.js?v=6";
+import {todayContext, prepareQuestion, validateSchedule, calendarAnswer} from "./answer-context.js?v=7";
 import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=6";
 import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=6";
 const $ = id => document.getElementById(id);

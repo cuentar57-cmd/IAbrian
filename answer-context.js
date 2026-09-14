@@ -10,8 +10,14 @@ export function isFollowUp(question){
 export function teamIn(question){
   const q=question.replace(/[¿?!.]/g," ").trim();
   const match=q.match(/(?:cu[aá]ndo\s+(?:vuelve\s+a\s+)?juega|pr[oó]ximo partido de|fixture de|calendario de)\s+(?:el\s+)?(.+)/i);
-  return match?.[1]?.replace(/\s+(hoy|ma[ñn]ana|otra vez|de nuevo).*$/i,"").trim().slice(0,50)||"";
+  return match?.[1]?.split(/\s+(?:contra|vs\.?|versus)\s+/i)[0]?.replace(/\s+(hoy|ma[ñn]ana|otra vez|de nuevo).*$/i,"").trim().slice(0,50)||"";
 }
+export function opponentIn(question){
+  const match=question.match(/\b(?:contra|vs\.?|versus)\s+(.+)/i);
+  const name=match?.[1]?.split(/\s+(?:cu[aá]ndo|a qu[eé] hora|juega|vuelve|hoy|ma[ñn]ana)\b/i)[0]?.replace(/[¿?!.,]/g,"").trim();
+  return name&&!/^(qui[eé]n|qu[eé] equipo)$/i.test(name)?name.slice(0,50):"";
+}
+const clubName = value => normalize(value).replace(/\b(?:club|atletico)\b/g,"").replace(/\s+/g," ").trim().replace(/^river plate$/,"river").replace(/^boca juniors$/,"boca");
 export function prepareQuestion(question,history=[],clock=todayContext()){
   const users=history.filter(m=>m.role==="user").slice(-8);
   const explicit=teamIn(question);
@@ -28,9 +34,17 @@ export function prepareQuestion(question,history=[],clock=todayContext()){
   const shortTeam=question.match(/^¿?y\s+([\p{L} ]{2,35})[?¿]?$/iu);
   if(shortTeam && team && !/despu[eé]s|entonces|cu[aá]ndo|a qu[eé]|contra|vuelve|otra/i.test(shortTeam[1]))team=shortTeam[1].trim();
   const combined=normalize(prior+" "+question);
+  let opponent=opponentIn(question);
+  if(!opponent&&!explicit&&followUp&&!shortTeam){
+    for(const message of [...users].reverse()){
+      const named=teamIn(message.content), rival=opponentIn(message.content);
+      if(rival){opponent=rival;break;}
+      if(named||/^¿?y\s+/i.test(message.content))break;
+    }
+  }
   const schedule=!!team && /juega|jugar|partido|fixture|calendario/.test(combined);
   const current=schedule || /\b(hoy|manana|actual|actuales|actualmente|ultimo|ultima|noticias|precio|cotizacion|clima|tiempo en|presidente|resultado|busca|buscame|internet|web)\b/.test(normalize(question));
-  return {clock,schedule,team,prior,current,query:schedule?team+" próximo partido fecha horario calendario oficial desde "+clock.date:(prior?prior+" — ":"")+question};
+  return {clock,schedule,team,opponent,prior,current,query:schedule?team+(opponent?" contra "+opponent:"")+" próximo partido fecha horario calendario oficial desde "+clock.date:(prior?prior+" — ":"")+question};
 }
 const months=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 export function datesIn(text,year){
@@ -102,10 +116,11 @@ export function fixtureCandidates(sources,context){
 }
 export function calendarAnswer(question,sources,context){
   context={...context,team:context.team||teamIn(question)||teamIn(context.prior||"")};
-  const candidates=fixtureCandidates(sources,context);
+  const allCandidates=fixtureCandidates(sources,context);
+  const candidates=context.opponent?allCandidates.filter(c=>clubName(c.opponent)===clubName(context.opponent)):allCandidates;
   if(!candidates.length)return null;
   const a=candidates[0];
-  const sameDate=candidates.filter(b=>b.date===a.date);
+  const sameDate=allCandidates.filter(b=>b.date===a.date);
   if(sameDate.some(b=>normalize(b.opponent)!==normalize(a.opponent)))return null;
   const corroboration=sameDate.find(b=>b.index!==a.index&&new URL(sources[b.index].url).hostname!==new URL(sources[a.index].url).hostname);
   const timed=sameDate.find(b=>b.argentina);
