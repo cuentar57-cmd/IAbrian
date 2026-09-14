@@ -34,3 +34,4 @@ test("source links survive history restoration",()=>{
  const data=[{id:"a",title:"Sol",messages:[{role:"assistant",content:"Respuesta",sources}]}];
  assert.deepEqual(readChats({getItem:()=>JSON.stringify(data)})[0].messages[0].sources,sources);
 });
+

@@ -1,67 +1,42 @@
-# IAbrian
-Chat de texto en español con inferencia local en el navegador, sin API de pago ni servidor de inferencia.
+# IAbrian 2.0
 
-## Usar
-Serví la raíz con HTTPS o localhost. Para desarrollo con Python 3:
-```sh
-python3 -m http.server 8080
-```
-Abrí http://localhost:8080, pulsá **Activar IA**, esperá la descarga y escribí.
-No abrir index.html con file://: los módulos y WebGPU necesitan un origen adecuado.
+Chat público en https://cuentar57-cmd.github.io/IAbrian/. Sitio estático en GitHub Pages, sin claves secretas ni API de pago. El modelo se ejecuta en el dispositivo del visitante mediante WebLLM 0.2.85.
 
-## Publicar con GitHub Pages
-En el repositorio, **Settings → Pages → Build and deployment → Deploy from a branch → main → /(root) → Save**.
-La URL prevista es https://cuentar57-cmd.github.io/IAbrian/; solo funcionará cuando Pages esté activado y termine de publicar.
-Esta entrega no activa Pages ni contrata servicios. La app usa rutas relativas y no necesita compilación.
-Verificar disponibilidad y límites del plan antes de publicar: https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages
-El costo de inferencia por API es cero. El alojamiento y la distribución de archivos dependen de límites y políticas de terceros, por lo que no se garantiza disponibilidad gratuita ilimitada.
+## Uso
 
-## Implementación
-- HTML, CSS y módulos JavaScript sin build.
-- WebLLM fijado a 0.2.85, cargado desde esm.run. Modelo Qwen2.5-0.5B-Instruct del catálogo de esa versión; selecciona q4f16_1 con shader-f16 y q4f32_1 si falta esa capacidad.
-- Worker de módulo para no bloquear la interfaz.
-- Descarga voluntaria, progreso, cancelación, timeout de carga y recuperación ante errores.
-- Historial local (hasta 30 chats y 100 mensajes por chat), borrar historial, copiar y detener.
-- Contenido como texto, sin interpretar HTML del usuario o del modelo.
-- Contexto reciente limitado por bytes, con ventana 4096 y respuesta máxima 512 tokens.
-- Sin cuentas, base de datos, sincronización, subida de archivos.
+- **Automático:** usa búsquedas para preguntas detectadas sobre datos actuales. La detección es heurística; elegí **Buscar en la web** para forzar una consulta.
+- **Buscar en la web:** consulta páginas de distintos sitios con Tavily keyless. Funciona incluso sin WebGPU. Sin modelo cargado muestra extractos identificados como tales; los calendarios compatibles pueden producir una respuesta estructurada con referencias.
+- **Solo IA local:** permite conversar sin enviar la pregunta al buscador. Para consultas detectadas como actuales pide cambiar de modo.
+- **Activar IA:** descarga voluntaria de Qwen2.5 1.5B por defecto; también 0.5B para equipos limitados y 3B para equipos con más memoria. La descarga puede superar 1 GB. Se elige precisión según soporte shader-f16. Recargá la página para cambiar de modelo después de cargarlo.
 
-## Requisitos y privacidad
-Necesita WebGPU, controladores y memoria suficientes. Detectar WebGPU no garantiza que el modelo pueda ejecutarse en todos los equipos. La descarga es de cientos de MB y el modelo requiere memoria adicional. Su calidad es limitada, especialmente frente a modelos grandes.
-Los mensajes se procesan localmente y se guardan en localStorage. Si se activa la búsqueda web opcional, se envía el tema indicado o la pregunta actual a Tavily; nunca el historial. Los proveedores de archivos externos reciben información de conexión. No hay analítica ni API remota de conversación.
-Borrar historial no borra la caché del modelo: usar la configuración de datos del sitio del navegador. No se garantiza funcionamiento sin conexión; el motor y la página aún dependen de recursos externos.
-En dispositivos compartidos, otros usuarios del mismo perfil de navegador pueden leer el historial.
+La primera descarga necesita conexión. Archivos en caché pueden reutilizarse, sujetos al navegador. WebGPU, memoria, batería y datos siguen siendo necesarios. No equivale a ChatGPT y no se entrenó un nuevo modelo.
 
-## Verificación
+## Cambios de esta versión
+
+- Diseño móvil contenido, entrada de 16px para evitar zoom automático de iOS, controles compactos y fuentes/fragmentos plegables.
+- Búsqueda independiente de la GPU, errores y cuotas explícitos, cancelar y volver a responder.
+- Hasta cinco fuentes con extractos más extensos para conservar tablas. El contexto del modelo se reduce por separado a un presupuesto acotado.
+- Contexto de repreguntas y cambio explícito de equipo. Las respuestas anteriores del modelo no son evidencia para la búsqueda.
+- Lectura de calendarios con fechas ISO, d/m y meses en español, aunque sus tablas lleguen aplanadas. Requiere año explícito, asociación de fecha con rival y fila con hora; cita una fuente o señala corroboración por otro dominio. Rechaza rivales contradictorios para la misma fecha. Solo etiqueta la hora argentina cuando está indicada. Para un partido del mismo día requiere hora argentina futura respecto del reloj del dispositivo.
+- Texto y código con un subconjunto seguro de Markdown. Nunca ejecuta HTML ni enlaces generados por el modelo. Los enlaces de fuentes se validan por separado.
+- Conserva historial v1 y fuentes antiguas, con límites de 30 conversaciones y 100 mensajes por conversación. Si el almacenamiento está lleno o bloqueado lo informa.
+
+## Límites importantes
+
+No cubre todo internet. Tavily keyless es gratuito con límites variables; no hay cuota ilimitada garantizada. Se envía la consulta y, en repreguntas, contexto de hasta tres preguntas anteriores o el tema resuelto. Ver [documentación](https://docs.tavily.com/documentation/keyless) y [privacidad](https://www.tavily.com/privacy).
+
+Los resultados son extractos, no artículos completos. El lector de calendarios reconoce formatos acotados; no es un proveedor oficial de resultados, no conoce suspensiones ni garantiza cobertura de todas las competiciones. Las fuentes pueden estar desactualizadas o equivocadas, y varios sitios pueden repetir el mismo error. El reloj del dispositivo debe ser correcto. Los modelos locales pequeños pueden equivocarse y tienen memoria de conversación limitada.
+
+## Desarrollo y verificación
+
+Sin compilación ni dependencias locales:
+
 ```sh
 npm test
 npm run check
+npm start
 ```
-Prueba manual real pendiente en GPU compatible: carga completa, pregunta en español, respuesta, detención, recarga del historial y cancelación de descarga. Las pruebas simuladas de interfaz no verifican inferencia real.
 
-## Fuentes y licencias de terceros
-- WebLLM (Apache-2.0): https://github.com/mlc-ai/web-llm
-- Documentación: https://webllm.mlc.ai/docs/
-- Modelo original Qwen2.5-0.5B-Instruct: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
-- Conversión MLC: https://huggingface.co/mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC
-No se incluyen ni se vuelven a licenciar los pesos del modelo en este repositorio.
+`tests/browser.html` permite probar la interfaz real en anchos de 320, 390, 430 y 1280px. Las pruebas unitarias cubren fechas pasadas, tablas aplanadas, rivales contradictorios, cambio de equipo, zona horaria, presupuesto Unicode, cuotas, cancelación, enlaces peligrosos e historial.
 
-## Búsqueda web general
-Activar **Buscar en la web**. El tema específico, si se indica, o la pregunta actual se envía a Tavily Search. No se envía el historial. Usa el modo oficial gratuito keyless, sin cuenta, clave, tarjeta ni facturación de API. Las respuestas se generan localmente con los extractos recuperados.
-
-Se solicitan cuatro resultados de búsqueda general (sin restricción de dominios) y se usan hasta dos con URL válida y extracto, limitados por el contexto del modelo pequeño. Los enlaces y fragmentos se muestran debajo de la respuesta y persisten en el historial. No se accede a todas las páginas existentes, contenido privado ni necesariamente artículos completos. Una búsqueda exitosa no garantiza que la respuesta del modelo sea correcta o actual.
-
-El proveedor aplica límites gratuitos no cuantificados aquí. Se muestran errores explícitos ante cuotas, rechazos, red y ausencia de resultados; nunca se activa una opción de pago ni se cambia silenciosamente a Wikipedia. Cancelación y timeout siguen disponibles.
-Los chats antiguos con fuentes de Wikipedia conservan enlaces y atribución.
-
-Verificado: petición OPTIONS con el origen https://cuentar57-cmd.github.io y encabezados de CORS, búsqueda HTTP real sin clave y pruebas automatizadas. La prueba completa de navegador + GPU local sigue pendiente.
-- Acceso keyless y límites: https://docs.tavily.com/documentation/keyless
-- API: https://docs.tavily.com/documentation/api-reference/endpoint/search
-
-## Fechas y repreguntas
-Cada consulta recibe la fecha y zona horaria del dispositivo (depende de que su reloj sea correcto). Las repreguntas breves pueden incluir la pregunta anterior del usuario en la búsqueda y en el contexto local; no se usan respuestas previas del modelo como evidencia. El aviso de privacidad refleja este cambio.
-Las preguntas detectadas sobre próximos partidos requieren activar búsqueda web. No se responde con fechas desde la memoria del modelo. Se consulta el calendario desde la fecha local. La respuesta deportiva se retiene hasta validar que las fechas reconocidas sean futuras y estén presentes en los extractos. Si faltan fechas verificables, hay fechas pasadas o el partido es del mismo día sin estado confirmado, se muestra una respuesta de incertidumbre con los enlaces.
-Esta comprobación conservadora no verifica semánticamente rival, competición o estado real del evento; no sustituye una API oficial de fixtures. No es entrenamiento del modelo y no garantiza que toda respuesta sea correcta.
-
-## Calendarios con fechas abreviadas
-El lector reconoce d/m además de fechas completas. Para preguntas «cuándo juega EQUIPO», puede producir una respuesta directa a partir de filas de calendario: exige año explícito en cada fuente, fecha futura, horario en la fila y coincidencia de fecha y un nombre de rival en dos dominios diferentes. Conserva el texto original de ambas filas, sin convertir horarios ni asumir zonas no indicadas. Es una comprobación acotada de extractos, no una validación de todo el calendario ni una garantía de cobertura de todas las competiciones. Si no hay coincidencia, continúa con el modelo y su filtro de fechas.
+Verificado en navegador: búsqueda real de River sin GPU y diseño con fuentes abiertas a 320/390px. El navegador de pruebas no dispone de GPU compatible; la descarga/inferencia de los modelos y el teclado de un iPhone físico requieren verificación en un dispositivo compatible. No se afirma que estas pruebas demuestren exactitud general del modelo.

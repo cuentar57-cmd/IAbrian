@@ -1,6 +1,7 @@
-import {todayContext, prepareQuestion, validateSchedule, calendarAnswer} from "./answer-context.js?v=5";
-import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=4";
-import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=4";
+import {renderMessage} from "./render-message.js?v=6";
+import {todayContext, prepareQuestion, validateSchedule, calendarAnswer} from "./answer-context.js?v=6";
+import {STORAGE_KEY, readChats, contextMessages} from "./chat-state.js?v=6";
+import {searchWeb, webMessages, cleanSources, sourceUrl} from "./web-search.js?v=6";
 const $ = id => document.getElementById(id);
 let savedChats = [];
 try { savedChats = readChats(localStorage); } catch { /* Storage may be disabled. */ }
@@ -8,24 +9,24 @@ let chats = savedChats, current = chats[0]?.id || null;
 let engine, worker, busy = false, loading = false, cancelLoad;
 let searchController, stopped=false, generating=false;
 function activeChat(){ return chats.find(c=>c.id===current); }
-function status(message){ $("status").textContent = message; }
+function status(message){ $("status").textContent = message; if(loading)$("load-status").textContent=message; }
 function persist(){
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(chats.slice(0,30))); }
   catch { status("No se pudo guardar el historial. Esta conversación seguirá disponible mientras mantengas abierta la página."); }
 }
 function controls(){
-  $("web-mode").disabled=busy;
-  $("web-query").disabled=busy;
-  $("send").disabled = !engine || busy || loading;
+  $("mode").disabled=busy;
+  $("model").disabled=loading||!!engine;
+  $("send").disabled = busy || loading;
   $("stop").hidden = !busy;
   $("new-chat").disabled = busy;
   $("clear-history").disabled = busy;
-  $("activate").disabled = loading;
+  $("activate").disabled = loading || busy;
   $("cancel-load").hidden = !loading;
   $("messages").setAttribute("aria-busy",String(busy));
   document.querySelectorAll("#history button").forEach(b=>b.disabled=busy);
 }
-function closeMenu(){ $("sidebar").classList.remove("open"); $("menu").setAttribute("aria-expanded","false"); }
+function closeMenu(){ $("sidebar").classList.remove("open"); $("menu-overlay").hidden=true; $("menu").setAttribute("aria-expanded","false"); }
 function renderHistory(){
   $("history").replaceChildren();
   if(!chats.length){ const p=document.createElement("small"); p.textContent="Tus ideas empiezan acá."; p.style.color="#9b9eac"; $("history").append(p); }
@@ -39,12 +40,16 @@ function renderHistory(){
 function appendMessage(message){
   const el=document.createElement("article"); el.className="message "+message.role;
   const label=document.createElement("div"); label.className="label"; label.textContent=message.role==="user"?"VOS":"✦ IABRIAN";
-  const body=document.createElement("div"); body.className="content"; body.textContent=message.content;
+  const body=document.createElement("div"); body.className="content"; renderMessage(body,message.content);
   el.append(label,body);
   if(message.role==="assistant"){
     const copy=document.createElement("button"); copy.textContent="Copiar";
-    copy.onclick=async()=>{try{await navigator.clipboard.writeText(body.textContent); status("Respuesta copiada.");}catch{status("No se pudo copiar. Podés seleccionar el texto manualmente.");}};
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(message.content); status("Respuesta copiada.");}catch{status("No se pudo copiar. Podés seleccionar el texto manualmente.");}};
     el.append(copy);
+    if(message===activeChat()?.messages.at(-1)){
+      const retry=document.createElement("button");retry.textContent="Volver a responder";retry.disabled=busy;
+      retry.onclick=()=>{if(busy)return;const chat=activeChat();const last=chat.messages.at(-2);if(last?.role!=="user")return;chat.messages.splice(-2);$("prompt").value=last.content;render();$("composer").requestSubmit();};el.append(retry);
+    }
   }
   appendSources(el,message.sources);
   $("messages").append(el); return body;
@@ -54,15 +59,18 @@ function appendSources(el,sources){
   const section=document.createElement("details");section.className="sources";
   const summary=document.createElement("summary");summary.textContent="Fuentes consultadas · Web";section.append(summary);
   safe.forEach((source,i)=>{
+    const card=document.createElement("div");card.className="source-card";
     const link=document.createElement("a");link.href=sourceUrl(source);link.target="_blank";link.rel="noopener noreferrer";link.textContent="["+(i+1)+"] "+source.title;
-    const p=document.createElement("p");p.textContent=source.extract+"…";section.append(link,p);
+    const domain=document.createElement("span");domain.className="source-domain";domain.textContent=new URL(link.href).hostname;
+    const excerpt=document.createElement("details");const title=document.createElement("summary");title.textContent="Ver extracto";
+    const p=document.createElement("p");p.textContent=source.extract;excerpt.append(title,p);card.append(domain,link,excerpt);section.append(card);
   });
   if(safe.some(s=>s.pageid)){
   const credit=document.createElement("a");credit.href="https://creativecommons.org/licenses/by-sa/4.0/";credit.target="_blank";credit.rel="noopener noreferrer";credit.textContent="Extractos de Wikipedia · CC BY-SA 4.0 · Autores e historial en cada artículo";section.append(credit);
   }
   el.append(section);
 }
-$("web-mode").onchange=()=>{ $("web-options").hidden=!$("web-mode").checked; };
+$("mode").onchange=()=>status($("mode").value==="local"?"Solo IA local: tu pregunta no se envía al buscador.":"Las búsquedas se envían a Tavily; en repreguntas se incluye contexto reciente. Gratis con límites.");
 function scroll(){ $("scroll-area").scrollTop=$("scroll-area").scrollHeight; }
 function render(){
   const messages=activeChat()?.messages||[];
@@ -75,14 +83,18 @@ $("clear-history").onclick=()=>{
   if(busy || !confirm("¿Borrar todas las conversaciones guardadas en este navegador?"))return;
   chats=[];current=null;persist();render();
 };
-$("menu").onclick=()=>{$("menu").setAttribute("aria-expanded",String($("sidebar").classList.toggle("open")));};
+$("menu").onclick=()=>{const open=$("sidebar").classList.toggle("open");$("menu").setAttribute("aria-expanded",String(open));$("menu-overlay").hidden=!open;if(open)$("new-chat").focus();};
+$("menu-overlay").onclick=closeMenu;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeMenu();}});
+$("settings").onclick=()=>$("info").showModal();
+$("prompt").addEventListener("input",()=>{$("prompt").style.height="auto";$("prompt").style.height=Math.min(120,$("prompt").scrollHeight)+"px";});
 $("about").onclick=()=>$("info").showModal();
 document.querySelectorAll("[data-prompt]").forEach(button=>button.onclick=()=>{
   $("prompt").value=button.dataset.prompt;$("prompt").focus();
 });
 $("cancel-load").onclick=()=>cancelLoad?.();
 $("activate").onclick=async()=>{
-  if(loading||engine)return;
+  if(loading||engine||busy)return;
   loading=true;controls();$("progress").hidden=false;
   $("badge").textContent="● Preparando IA";
   status("Comprobando compatibilidad…");
@@ -95,9 +107,9 @@ $("activate").onclick=async()=>{
     const task=(async()=>{
       if(!isSecureContext || !navigator.gpu)throw new Error("Este navegador no tiene WebGPU disponible. Probá un navegador actualizado con aceleración gráfica, en HTTPS.");
       const adapter=await navigator.gpu.requestAdapter();
-      if(!adapter)throw new Error("No se encontró una GPU compatible. Probá otro dispositivo o activá la aceleración gráfica del navegador.");
+      if(!adapter)throw new Error("No hay una GPU compatible. Podés usar Buscar en la web sin activar la IA. Para conversar localmente, probá otro dispositivo o activá la aceleración gráfica.");
       const precision=adapter.features.has("shader-f16")?"q4f16_1":"q4f32_1";
-      const model="Qwen2.5-0.5B-Instruct-"+precision+"-MLC";
+      const model="Qwen2.5-"+$("model").value+"-Instruct-"+precision+"-MLC";
       status("Preparando descarga. La primera vez puede tardar varios minutos…");
       const {CreateWebWorkerMLCEngine}=await import("https://esm.run/@mlc-ai/web-llm@0.2.85");
       if(cancelled)throw new Error("Carga cancelada.");
@@ -115,7 +127,7 @@ $("activate").onclick=async()=>{
       return await Promise.race([enginePromise,workerFailure]);
     })();
     engine=await Promise.race([task,abortPromise]);
-    $("activation").hidden=true;$("badge").textContent="● IA lista";$("badge").classList.add("ready");
+    $("activation").hidden=true;$("info").close();$("badge").textContent="● IA lista";$("badge").classList.add("ready");
     status("Todo listo. Las respuestas se generan en este dispositivo.");$("prompt").focus();
   }catch(error){
     worker?.terminate();worker=null;engine=null;
@@ -133,24 +145,22 @@ $("prompt").addEventListener("keydown",event=>{
 $("composer").onsubmit=async event=>{
   event.preventDefault();
   if(busy)return;
-  if(!engine){status("Primero activá la IA para poder enviar tu pregunta.");return;}
+  
   const text=$("prompt").value.trim();if(!text)return;
   if(new TextEncoder().encode(text).length>2200){status("El mensaje es muy largo para este modelo pequeño. Acortalo y volvé a enviarlo.");return;}
-  if(!current){
-    current=crypto.randomUUID();chats.unshift({id:current,title:text.slice(0,60),messages:[]});chats=chats.slice(0,30);
-  }
+  const requestContext=prepareQuestion(text,activeChat()?.messages||[],todayContext());
+  const useWeb=$("mode").value==="web"||($("mode").value==="auto"&&requestContext.current);
+  if(!engine&&!useWeb){status("Para conversar o escribir, activá la IA. También podés elegir Buscar en la web sin descargarla.");$("info").showModal();return;}
+  if(!current){current=crypto.randomUUID();chats.unshift({id:current,title:text.slice(0,60),messages:[]});chats=chats.slice(0,30);}
   const chat=activeChat();
-  const requestContext=prepareQuestion(text,chat.messages,todayContext());
-  if(requestContext.schedule&&!$("web-mode").checked){
-    status("Para confirmar un próximo partido necesitás activar Buscar en la web. Sin una consulta actual no puedo confirmar la fecha.");
-    $("web-mode").focus();return;
+  if(requestContext.current&&!useWeb){
+    status("Esta pregunta necesita datos actuales. Elegí Automático o Buscar en la web para consultarlos.");
+    $("mode").focus();return;
   }
   // Drop an unanswered user turn after an interrupted or failed request.
   if(chat.messages.at(-1)?.role==="user")chat.messages.pop();
   chat.messages.push({role:"user",content:text});$("prompt").value="";
-  const useWeb=$("web-mode").checked;
-  const query=$("web-query").value.trim() ? $("web-query").value.trim()+" "+(requestContext.schedule?"próximo partido desde "+requestContext.clock.date:"") : requestContext.query;
-  $("web-query").value="";
+  const query=requestContext.query;
   stopped=false;busy=true;render();persist();status("IAbrian está pensando…");
   const reply={role:"assistant",content:""};
   const body=appendMessage(reply);
@@ -168,7 +178,14 @@ $("composer").onsubmit=async event=>{
       appendSources(body.parentElement,reply.sources);
       if(requestContext.schedule){
         const calendar=calendarAnswer(text,reply.sources,requestContext);
-        if(calendar){reply.content=calendar;body.textContent=calendar;status("Fecha y rival coincidentes en dos fuentes. Revisá los enlaces por posibles cambios.");return;}
+        if(calendar){reply.content=calendar;body.textContent=calendar;status("Calendario consultado. Los horarios pueden cambiar.");return;}
+        // A small model must not invent a fixture when no dated row can be identified.
+        reply.content="No encontré un próximo partido con fecha y rival que pueda identificar con seguridad. Las fuentes de abajo pueden ayudarte a comprobar el calendario.";
+        body.textContent=reply.content;status("No se pudo extraer una fecha fiable de estos resultados.");return;
+      }
+      if(!engine){
+        reply.content="Extractos de la web (sin resumen de IA):\n\n"+reply.sources.slice(0,3).map((s,i)=>"["+(i+1)+"] "+s.title+"\n"+s.extract.slice(0,450)+(s.extract.length>450?"…":"")).join("\n\n");
+        body.textContent=reply.content;status("Fuentes encontradas. Activá la IA para obtener un resumen conversacional.");return;
       }
       requestMessages=webMessages(text,reply.sources,requestContext);
       status("Leyendo las fuentes y preparando la respuesta…");
@@ -196,10 +213,10 @@ $("composer").onsubmit=async event=>{
     status("No se pudo completar la respuesta. "+(error.message||"Probá recargar la página."));
     if(!reply.content.trim()){$("prompt").value=text;body.parentElement.remove();}
   }finally{
-    if(requestContext.schedule&&reply.content.trim()){reply.content=validateSchedule(reply.content,reply.sources||[],requestContext.clock);body.textContent=reply.content;}
+    
     if(reply.content.trim())chat.messages.push(reply);
     chat.messages=chat.messages.slice(-100);
-    generating=false;busy=false;controls();persist();$("prompt").focus();
+    generating=false;busy=false;controls();persist();render();
   }
 };
 render();

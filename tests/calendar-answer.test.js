@@ -14,13 +14,14 @@ test("two agreeing calendars answer directly and exclude yesterday",()=>{
  assert.doesNotMatch(answer,/12\/9/);
  assert.equal(validateSchedule(answer,sources,clock),answer);
 });
-test("one source or conflicting opponents cannot directly confirm match",()=>{
+test("one source is attributed explicitly; conflicting opponents cannot confirm match",()=>{
  const c=prepareQuestion("Cuando juega River",[],clock);
- assert.equal(calendarAnswer("Cuando juega River",sources.slice(0,1),c),null);
+ assert.match(calendarAnswer("Cuando juega River",sources.slice(0,1),c),/Según el calendario consultado/);
  assert.equal(calendarAnswer("Cuando juega River",[sources[0],{...sources[1],extract:"Sábado 19 de septiembre\n19.00 River – Lanús"}],c),null);
 });
-test("missing year or two pages of same domain cannot confirm match",()=>{
+test("missing year cannot confirm match; same domain is not corroboration",()=>{
  const c=prepareQuestion("Cuando juega River",[],clock);
  assert.equal(calendarAnswer("Cuando juega River",sources.map(s=>({...s,title:s.title.replace("2026","")})),c),null);
- assert.equal(calendarAnswer("Cuando juega River",[sources[0],{...sources[1],url:"https://example.org/other"}],c),null);
+ assert.match(calendarAnswer("Cuando juega River",[sources[0],{...sources[1],url:"https://example.org/other"}],c),/Según el calendario consultado/);
 });
+

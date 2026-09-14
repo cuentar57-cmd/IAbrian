@@ -36,3 +36,4 @@ test("web sources survive history without model-invented links",()=>{
  const chats=readChats({getItem:()=>JSON.stringify([{id:"a",title:"a",messages:[{role:"assistant",content:"a",sources}]}])});
  assert.deepEqual(chats[0].messages[0].sources,sources);
 });
+

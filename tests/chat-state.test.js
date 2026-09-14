@@ -18,3 +18,4 @@ test("context trims whole messages and starts with user",()=>{
 test("context budget counts unicode bytes",()=>{
  assert.deepEqual(contextMessages([{role:"user",content:"😀".repeat(20)}],100),[]);
 });
+

@@ -32,3 +32,4 @@ test("sports prompt includes local date and preceding user topic within context 
  assert.match(m[0].content,/2026-09-13/);assert.match(m[1].content,/River/);
  assert.ok(new TextEncoder().encode(m.map(x=>x.content).join("")).length<3900);
 });
+
